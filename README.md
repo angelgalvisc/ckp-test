@@ -2,6 +2,8 @@
 
 Conformance test harness for the [Claw Kernel Protocol (CKP)](https://github.com/angelgalvisc/clawkernel).
 
+🌐 **Documentation:** [clawkernel.com](https://www.clawkernel.com/) · Maintained by [Datastrat](https://datastrat.co)
+
 ## Install
 
 ```bash
