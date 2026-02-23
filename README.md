@@ -5,7 +5,10 @@ Conformance test harness for the [Claw Kernel Protocol (CKP)](https://github.com
 ## Install
 
 ```bash
-npm install @clawkernel/ckp-test
+git clone https://github.com/angelgalvisc/ckp-test.git
+cd ckp-test
+npm install
+npx tsc
 ```
 
 ## Usage
@@ -13,26 +16,26 @@ npm install @clawkernel/ckp-test
 ### Validate a manifest
 
 ```bash
-ckp-test validate claw.yaml
+node dist/cli.js validate claw.yaml
 ```
 
 ### Run conformance vectors
 
 ```bash
 # Against a live agent (stdio transport)
-ckp-test run --target "./my-agent" --manifest claw.yaml --output report.md
+node dist/cli.js run --target "./my-agent" --manifest claw.yaml --output report.md
 
 # Manifest-only (no agent needed)
-ckp-test run --manifest claw.yaml --level 1
+node dist/cli.js run --manifest claw.yaml --level 1
 
 # With skip policy
-ckp-test run --target "./my-agent" --skip skips.json --output report.json
+node dist/cli.js run --target "./my-agent" --skip skips.json --output report.json
 ```
 
 ### List vectors
 
 ```bash
-ckp-test vectors
+node dist/cli.js vectors
 ```
 
 ## Conformance Criteria
