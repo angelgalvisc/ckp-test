@@ -7,6 +7,7 @@
 
 import { spawn } from "node:child_process";
 import { type ConformanceLevel } from "./schemas.js";
+import { validateManifest } from "./validator.js";
 
 // ── Test Vector Definitions ────────────────────────────────────────────────
 
@@ -19,6 +20,10 @@ export interface TestVector {
   description: string;
   /** JSON-RPC request to send (or null for manifest-only vectors). */
   request: Record<string, unknown> | null;
+  /** Inline manifest data for manifest validation vectors. */
+  manifestData?: Record<string, unknown>;
+  /** Raw string to send as-is (for parse error testing). */
+  rawRequest?: string;
   /** Expected behavior. */
   expected: {
     type: "success" | "error" | "notification" | "manifest-valid" | "manifest-invalid";
@@ -131,6 +136,7 @@ export async function sendJsonRpc(
 
 export interface StdioTransport {
   send(request: Record<string, unknown>, timeoutMs: number): Promise<JsonRpcResponse>;
+  sendRaw(raw: string, timeoutMs: number): Promise<JsonRpcResponse>;
   close(): void;
 }
 
@@ -144,36 +150,47 @@ export function createStdioTransport(command: string, args: string[] = []): Stdi
 
   let buffer = "";
 
+  function waitForResponse(timeoutMs: number, label: string): Promise<JsonRpcResponse> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`JSON-RPC ${label} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      const onData = (data: Buffer) => {
+        buffer += data.toString();
+        // Try to parse complete JSON-RPC response
+        const lines = buffer.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]!.trim();
+          if (!line) continue;
+          try {
+            const response = JSON.parse(line) as JsonRpcResponse;
+            clearTimeout(timer);
+            child.stdout!.removeListener("data", onData);
+            buffer = lines.slice(i + 1).join("\n");
+            resolve(response);
+            return;
+          } catch {
+            // Not complete JSON yet, continue
+          }
+        }
+      };
+
+      child.stdout!.on("data", onData);
+    });
+  }
+
   return {
     send(request: Record<string, unknown>, timeoutMs: number): Promise<JsonRpcResponse> {
-      return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          reject(new Error(`JSON-RPC request timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
+      const promise = waitForResponse(timeoutMs, "request");
+      child.stdin!.write(JSON.stringify(request) + "\n");
+      return promise;
+    },
 
-        const onData = (data: Buffer) => {
-          buffer += data.toString();
-          // Try to parse complete JSON-RPC response
-          const lines = buffer.split("\n");
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i]!.trim();
-            if (!line) continue;
-            try {
-              const response = JSON.parse(line) as JsonRpcResponse;
-              clearTimeout(timer);
-              child.stdout!.removeListener("data", onData);
-              buffer = lines.slice(i + 1).join("\n");
-              resolve(response);
-              return;
-            } catch {
-              // Not complete JSON yet, continue
-            }
-          }
-        };
-
-        child.stdout!.on("data", onData);
-        child.stdin!.write(JSON.stringify(request) + "\n");
-      });
+    sendRaw(raw: string, timeoutMs: number): Promise<JsonRpcResponse> {
+      const promise = waitForResponse(timeoutMs, "raw request");
+      child.stdin!.write(raw + "\n");
+      return promise;
     },
 
     close() {
@@ -201,13 +218,76 @@ export async function runVector(
     };
   }
 
-  // Manifest-only vectors (no transport needed)
-  if (!vector.request) {
+  // Manifest validation vectors — validate inline manifestData
+  if (!vector.request && !vector.rawRequest) {
+    if (vector.manifestData) {
+      const validation = validateManifest(vector.manifestData);
+      if (vector.expected.type === "manifest-valid") {
+        return {
+          vector,
+          status: validation.valid ? "pass" : "fail",
+          actual: { valid: validation.valid, errors: validation.errors },
+          error: validation.valid ? undefined : `Expected valid manifest but got ${validation.errors.length} errors`,
+          durationMs: Date.now() - start,
+        };
+      }
+      if (vector.expected.type === "manifest-invalid") {
+        return {
+          vector,
+          status: !validation.valid ? "pass" : "fail",
+          actual: { valid: validation.valid, errors: validation.errors },
+          error: !validation.valid ? undefined : "Expected invalid manifest but validation passed",
+          durationMs: Date.now() - start,
+        };
+      }
+    }
+    // No manifestData and no request — pass (backward compat for scenario vectors)
     return {
       vector,
-      status: "pass", // Manifest validation is done separately
+      status: "pass",
       durationMs: Date.now() - start,
     };
+  }
+
+  // Raw request vectors (e.g., parse error testing)
+  if (vector.rawRequest) {
+    if (!transport) {
+      return {
+        vector,
+        status: "skip",
+        skipReason: "No transport configured (manifest-only mode)",
+        durationMs: Date.now() - start,
+      };
+    }
+    try {
+      const response = await transport.sendRaw(vector.rawRequest, 5000);
+      if (vector.expected.type === "error" && response.error) {
+        if (vector.expected.errorCode !== undefined && response.error.code !== vector.expected.errorCode) {
+          return {
+            vector,
+            status: "fail",
+            actual: response.error,
+            error: `Expected error code ${vector.expected.errorCode} but got ${response.error.code}`,
+            durationMs: Date.now() - start,
+          };
+        }
+        return { vector, status: "pass", actual: response.error, durationMs: Date.now() - start };
+      }
+      return {
+        vector,
+        status: "fail",
+        actual: response,
+        error: `Expected error but got: ${JSON.stringify(response)}`,
+        durationMs: Date.now() - start,
+      };
+    } catch (err) {
+      return {
+        vector,
+        status: "error",
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - start,
+      };
+    }
   }
 
   // Transport-based vectors
@@ -222,8 +302,8 @@ export async function runVector(
 
   try {
     // Notifications have no id → no response expected
-    if (!("id" in vector.request)) {
-      await transport.send(vector.request, 5000).catch(() => {
+    if (!("id" in vector.request!)) {
+      await transport.send(vector.request!, 5000).catch(() => {
         // Notifications don't expect responses
       });
       return {
@@ -233,7 +313,7 @@ export async function runVector(
       };
     }
 
-    const response = await sendJsonRpc(transport, vector.request);
+    const response = await sendJsonRpc(transport, vector.request!);
 
     // Validate response
     if (vector.expected.type === "success") {

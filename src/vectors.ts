@@ -3,6 +3,9 @@
  *
  * 31 vectors: 13 L1 + 10 L2 + 8 L3
  * Extracted from clawkernel-test-vectors.md
+ *
+ * Manifest-only vectors include inline `manifestData` for real validation.
+ * TV-L1-12 uses `rawRequest` to send malformed JSON bytes.
  */
 
 import type { TestVector } from "./runner.js";
@@ -16,6 +19,29 @@ export const TEST_VECTORS: TestVector[] = [
     title: "Valid Minimal Manifest",
     description: "Smallest valid claw.yaml with inline Identity + Provider",
     request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "test-minimal" },
+      spec: {
+        identity: {
+          inline: {
+            personality: "Minimal test agent for L1 conformance.",
+            autonomy: "supervised",
+          },
+        },
+        providers: [
+          {
+            inline: {
+              protocol: "openai-compatible",
+              endpoint: "http://localhost:11434/v1",
+              model: "test-model",
+              auth: { type: "none" },
+            },
+          },
+        ],
+      },
+    },
     expected: { type: "manifest-valid" },
     reference: "Section 6, Minimal Valid Manifest",
   },
@@ -25,6 +51,23 @@ export const TEST_VECTORS: TestVector[] = [
     title: "Missing Identity",
     description: "Manifest without Identity — must reject",
     request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "test-no-identity" },
+      spec: {
+        providers: [
+          {
+            inline: {
+              protocol: "openai-compatible",
+              endpoint: "http://localhost:11434/v1",
+              model: "test-model",
+              auth: { type: "none" },
+            },
+          },
+        ],
+      },
+    },
     expected: { type: "manifest-invalid" },
     reference: "Section 5.1, Validation Rules",
   },
@@ -34,6 +77,18 @@ export const TEST_VECTORS: TestVector[] = [
     title: "Missing Providers",
     description: "Manifest without Providers — must reject",
     request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "test-no-providers" },
+      spec: {
+        identity: {
+          inline: {
+            personality: "Agent without providers.",
+          },
+        },
+      },
+    },
     expected: { type: "manifest-invalid" },
     reference: "Section 5.2, Validation Rules",
   },
@@ -162,6 +217,28 @@ export const TEST_VECTORS: TestVector[] = [
     title: "Empty Provider Personality",
     description: "Identity with empty personality string — must reject",
     request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "test-empty-personality" },
+      spec: {
+        identity: {
+          inline: {
+            personality: "",
+          },
+        },
+        providers: [
+          {
+            inline: {
+              protocol: "openai-compatible",
+              endpoint: "http://localhost:11434/v1",
+              model: "test-model",
+              auth: { type: "none" },
+            },
+          },
+        ],
+      },
+    },
     expected: { type: "manifest-invalid" },
     reference: "Section 5.1, Validation Rules",
   },
@@ -182,8 +259,9 @@ export const TEST_VECTORS: TestVector[] = [
     id: "TV-L1-12",
     level: "L1",
     title: "Parse Error (Malformed JSON)",
-    description: "Intentionally malformed JSON — expect -32700. Note: this vector sends raw bytes, not structured JSON.",
-    request: null, // Special case: raw bytes
+    description: "Intentionally malformed JSON — expect -32700. This vector sends raw bytes, not structured JSON.",
+    request: null,
+    rawRequest: "{invalid json without closing brace",
     expected: { type: "error", errorCode: -32700 },
     reference: "Section 9.4, Error Codes",
   },
@@ -213,6 +291,59 @@ export const TEST_VECTORS: TestVector[] = [
     title: "Valid Level 2 Manifest",
     description: "Manifest with Identity + Provider + Channel + Tool + Sandbox + Policy",
     request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "test-l2-manifest" },
+      spec: {
+        identity: {
+          inline: {
+            personality: "L2 test agent with tools and sandbox.",
+            autonomy: "supervised",
+          },
+        },
+        providers: [
+          {
+            inline: {
+              protocol: "openai-compatible",
+              endpoint: "http://localhost:11434/v1",
+              model: "test-model",
+              auth: { type: "none" },
+            },
+          },
+        ],
+        channels: [
+          {
+            inline: {
+              type: "stdio",
+              transport: "pipe",
+              auth: { type: "none" },
+            },
+          },
+        ],
+        tools: [
+          {
+            inline: {
+              name: "echo",
+              description: "Echo input back",
+              input_schema: { type: "object", properties: { text: { type: "string" } } },
+            },
+          },
+        ],
+        sandbox: {
+          inline: {
+            level: "process",
+          },
+        },
+        policies: [
+          {
+            inline: {
+              rules: [{ effect: "allow", action: "*" }],
+            },
+          },
+        ],
+      },
+    },
     expected: { type: "manifest-valid" },
     reference: "Section 11, Conformance Levels",
   },
@@ -405,6 +536,81 @@ export const TEST_VECTORS: TestVector[] = [
     title: "Valid Level 3 Manifest",
     description: "Manifest with all 9 primitives",
     request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "test-l3-manifest" },
+      spec: {
+        identity: {
+          inline: {
+            personality: "L3 full-featured test agent.",
+            autonomy: "autonomous",
+          },
+        },
+        providers: [
+          {
+            inline: {
+              protocol: "anthropic-native",
+              endpoint: "https://api.anthropic.com/v1",
+              model: "claude-sonnet-4-20250514",
+              auth: { type: "bearer", secret_ref: "API_KEY" },
+            },
+          },
+        ],
+        channels: [
+          {
+            inline: {
+              type: "stdio",
+              transport: "pipe",
+              auth: { type: "none" },
+            },
+          },
+        ],
+        tools: [
+          {
+            inline: {
+              name: "echo",
+              description: "Echo input back",
+              input_schema: { type: "object", properties: { text: { type: "string" } } },
+            },
+          },
+        ],
+        skills: [
+          {
+            inline: {
+              description: "Analyze data",
+              tools_required: ["echo"],
+              instruction: "Use echo tool to process data.",
+            },
+          },
+        ],
+        memory: {
+          inline: {
+            stores: [{ name: "default", backend: "local" }],
+          },
+        },
+        sandbox: {
+          inline: {
+            level: "container",
+          },
+        },
+        policies: [
+          {
+            inline: {
+              rules: [{ effect: "allow", action: "*" }],
+            },
+          },
+        ],
+        swarm: {
+          inline: {
+            topology: "star",
+            agents: [{ name: "peer-1", endpoint: "http://localhost:9001" }],
+            coordination: { type: "centralized" },
+            aggregation: { strategy: "first-response" },
+          },
+        },
+      },
+    },
     expected: { type: "manifest-valid" },
     reference: "Section 11, Conformance Levels",
   },
