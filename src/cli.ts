@@ -174,8 +174,22 @@ async function cmdRun(options: {
   // Clean up
   if (transport) transport.close();
 
-  // Exit code: 0 if at least L1 conformant
-  const exitCode = report.criteria.L1.result === "CONFORMANT" ? 0 : 1;
+  // Exit code: 0 if result is CONFORMANT or PARTIAL for the requested scope.
+  // --level N  → check that specific level's result
+  // no --level → check overallResult
+  let exitCode = 1;
+  if (options.level) {
+    const levelKey = `L${options.level}` as keyof typeof report.criteria;
+    const levelResult = report.criteria[levelKey]?.result;
+    if (levelResult === "CONFORMANT" || levelResult === "PARTIAL") {
+      exitCode = 0;
+    }
+  } else {
+    // Full suite: exit 0 if overall is anything other than NON-CONFORMANT
+    if (report.overallResult !== "NON-CONFORMANT") {
+      exitCode = 0;
+    }
+  }
   process.exit(exitCode);
 }
 
