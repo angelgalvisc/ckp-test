@@ -89,7 +89,7 @@ export function validateManifest(manifest: Record<string, unknown>): ValidationR
     }
   }
 
-  const optionalSinglePrimitives = ["memory", "sandbox", "swarm"];
+  const optionalSinglePrimitives = ["memory", "sandbox", "swarm", "telemetry"];
   for (const key of optionalSinglePrimitives) {
     if (spec[key] !== undefined) {
       primitivesSeen.push(key);
@@ -179,8 +179,8 @@ function validateInlinePrimitives(
     }
   }
 
-  // Validate inline single primitives (Memory, Sandbox, Swarm)
-  const singlePrimitives: Record<string, string> = { memory: "Memory", sandbox: "Sandbox", swarm: "Swarm" };
+  // Validate inline single primitives (Memory, Sandbox, Swarm, Telemetry)
+  const singlePrimitives: Record<string, string> = { memory: "Memory", sandbox: "Sandbox", swarm: "Swarm", telemetry: "Telemetry" };
   for (const [key, kind] of Object.entries(singlePrimitives)) {
     if (spec[key] && typeof spec[key] === "object") {
       validateSingleInline(spec[key], kind, `spec.${key}`, errors);

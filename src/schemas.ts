@@ -54,6 +54,7 @@ export const DEFINITIONS_SCHEMA = {
         "Sandbox",
         "Policy",
         "Swarm",
+        "Telemetry",
         "Claw",
       ],
     },
@@ -228,6 +229,12 @@ export const CLAW_MANIFEST_SCHEMA = {
             { type: "object" },
           ],
         },
+        telemetry: {
+          oneOf: [
+            { type: "string", minLength: 1 },
+            { type: "object" },
+          ],
+        },
       },
       required: ["identity", "providers"],
       additionalProperties: false,
@@ -249,6 +256,7 @@ export const REQUIRED_FIELDS_BY_KIND: Record<string, string[]> = {
   Sandbox: ["level"],
   Policy: ["rules"],
   Swarm: ["topology", "agents", "coordination", "aggregation"],
+  Telemetry: ["exporters"],
 };
 
 // ── Conformance Level Requirements ─────────────────────────────────────────
