@@ -165,6 +165,27 @@ function validateInlinePrimitives(
   if (spec.identity && typeof spec.identity === "object") {
     validateSingleInline(spec.identity, "Identity", "spec.identity", errors);
   }
+
+  // Validate inline array primitives (Channel, Skill, Policy)
+  // These supplement AJV — the manifest schema uses { "type": "object" } for inlines,
+  // so AJV doesn't check required fields. We use REQUIRED_FIELDS_BY_KIND to fill the gap.
+  const arrayPrimitives: Record<string, string> = { channels: "Channel", skills: "Skill", policies: "Policy" };
+  for (const [key, kind] of Object.entries(arrayPrimitives)) {
+    const arr = spec[key];
+    if (arr && Array.isArray(arr)) {
+      for (let i = 0; i < arr.length; i++) {
+        validateSingleInline(arr[i], kind, `spec.${key}[${i}]`, errors);
+      }
+    }
+  }
+
+  // Validate inline single primitives (Memory, Sandbox, Swarm)
+  const singlePrimitives: Record<string, string> = { memory: "Memory", sandbox: "Sandbox", swarm: "Swarm" };
+  for (const [key, kind] of Object.entries(singlePrimitives)) {
+    if (spec[key] && typeof spec[key] === "object") {
+      validateSingleInline(spec[key], kind, `spec.${key}`, errors);
+    }
+  }
 }
 
 function validateSingleInline(
