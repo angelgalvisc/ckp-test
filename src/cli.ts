@@ -24,6 +24,43 @@ import {
 } from "./runner.js";
 import { TEST_VECTORS } from "./vectors.js";
 
+async function bootstrapSession(transport: ReturnType<typeof createStdioTransport>): Promise<boolean> {
+  const bootstrapInitialize = {
+    jsonrpc: "2.0",
+    id: "ckp-bootstrap",
+    method: "claw.initialize",
+    params: {
+      protocolVersion: "0.2.0",
+      clientInfo: { name: "ckp-test", version: "0.2.0" },
+      manifest: {
+        kind: "Claw",
+        metadata: { name: "ckp-bootstrap" },
+        spec: {
+          identity: { inline: { personality: "Bootstrap session for conformance testing." } },
+          providers: [
+            {
+              inline: {
+                protocol: "openai-compatible",
+                endpoint: "http://localhost:11434/v1",
+                model: "bootstrap-model",
+                auth: { type: "none" },
+              },
+            },
+          ],
+        },
+      },
+      capabilities: { tools: {}, swarm: {}, memory: {} },
+    },
+  };
+
+  try {
+    const response = await transport.send(bootstrapInitialize, 5000);
+    return !response.error;
+  } catch {
+    return false;
+  }
+}
+
 // ── YAML parser (simple, no dependency for manifest parsing) ───────────────
 
 function parseYaml(content: string): Record<string, unknown> {
@@ -128,18 +165,36 @@ async function cmdRun(options: {
   console.log("");
 
   const results = [];
+  let sessionInitialized = false;
   for (const vector of vectors) {
+    const method = (vector.request && typeof vector.request.method === "string")
+      ? vector.request.method
+      : null;
+
+    // Ensure session bootstrap for vectors that require an initialized runtime.
+    if (transport && method && method !== "claw.initialize" && !sessionInitialized) {
+      sessionInitialized = await bootstrapSession(transport);
+    }
+
     const result = await runVector(vector, transport, skipPolicy);
-    const icon = result.status === "pass" ? "\u2713" :
-                 result.status === "fail" ? "\u2717" :
-                 result.status === "skip" ? "\u2014" : "!";
+    const icon = result.status === "pass" ? "✓" :
+                 result.status === "fail" ? "✗" :
+                 result.status === "skip" ? "—" : "!";
     console.log(`  ${icon} ${vector.id}  ${vector.title}  (${result.durationMs}ms)`);
     if (result.status === "fail" && result.error) {
-      console.log(`    \u2514\u2500 ${result.error}`);
+      console.log(`    └─ ${result.error}`);
     }
     if (result.status === "skip" && result.skipReason) {
-      console.log(`    \u2514\u2500 Skip: ${result.skipReason}`);
+      console.log(`    └─ Skip: ${result.skipReason}`);
     }
+
+    if (method === "claw.initialize" && result.status === "pass") {
+      sessionInitialized = true;
+    }
+    if (method === "claw.shutdown" && result.status === "pass") {
+      sessionInitialized = false;
+    }
+
     results.push(result);
   }
 
