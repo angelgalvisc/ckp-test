@@ -315,9 +315,9 @@ export const TEST_VECTORS: TestVector[] = [
         channels: [
           {
             inline: {
-              type: "stdio",
-              transport: "pipe",
-              auth: { type: "none" },
+              type: "cli",
+              transport: "stdio",
+              auth: { secret_ref: "CLI_TOKEN" },
             },
           },
         ],
@@ -338,7 +338,7 @@ export const TEST_VECTORS: TestVector[] = [
         policies: [
           {
             inline: {
-              rules: [{ effect: "allow", action: "*" }],
+              rules: [{ id: "allow-all", action: "allow", scope: "all" }],
             },
           },
         ],
@@ -460,7 +460,8 @@ export const TEST_VECTORS: TestVector[] = [
     level: "L2",
     title: "Approval Timeout",
     description: "Approval not received within timeout, expect -32012",
-    request: null, // Scenario-based: requires timed test
+    request: null,
+    scenario: true, // Official SKIP: requires multi-step orchestration (send tool.call, wait timeout, verify -32012)
     expected: { type: "error", errorCode: -32012 },
     reference: "Section 5.8, Policy Validation Rules",
   },
@@ -560,9 +561,9 @@ export const TEST_VECTORS: TestVector[] = [
         channels: [
           {
             inline: {
-              type: "stdio",
-              transport: "pipe",
-              auth: { type: "none" },
+              type: "cli",
+              transport: "stdio",
+              auth: { secret_ref: "CLI_TOKEN" },
             },
           },
         ],
@@ -586,7 +587,7 @@ export const TEST_VECTORS: TestVector[] = [
         ],
         memory: {
           inline: {
-            stores: [{ name: "default", backend: "local" }],
+            stores: [{ name: "default", type: "key-value", backend: "sqlite", scope: "global" }],
           },
         },
         sandbox: {
@@ -597,16 +598,16 @@ export const TEST_VECTORS: TestVector[] = [
         policies: [
           {
             inline: {
-              rules: [{ effect: "allow", action: "*" }],
+              rules: [{ id: "allow-all", action: "allow", scope: "all" }],
             },
           },
         ],
         swarm: {
           inline: {
-            topology: "star",
-            agents: [{ name: "peer-1", endpoint: "http://localhost:9001" }],
-            coordination: { type: "centralized" },
-            aggregation: { strategy: "first-response" },
+            topology: "peer-to-peer",
+            agents: [{ identity_ref: "peer-1", role: "peer" }],
+            coordination: { message_passing: "direct", backend: "in-process", concurrency: { max_parallel: 2 } },
+            aggregation: { strategy: "merge" },
           },
         },
       },

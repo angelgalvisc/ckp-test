@@ -24,6 +24,8 @@ export interface TestVector {
   manifestData?: Record<string, unknown>;
   /** Raw string to send as-is (for parse error testing). */
   rawRequest?: string;
+  /** Scenario-based vector that requires multi-step orchestration (official SKIP). */
+  scenario?: boolean;
   /** Expected behavior. */
   expected: {
     type: "success" | "error" | "notification" | "manifest-valid" | "manifest-invalid";
@@ -214,6 +216,16 @@ export async function runVector(
       vector,
       status: "skip",
       skipReason: skipPolicy.skippedVectors[vector.id],
+      durationMs: Date.now() - start,
+    };
+  }
+
+  // Scenario-based vectors: official SKIP (requires multi-step orchestration)
+  if (vector.scenario) {
+    return {
+      vector,
+      status: "skip",
+      skipReason: "Scenario-based: requires multi-step orchestration (not supported by current harness)",
       durationMs: Date.now() - start,
     };
   }
@@ -423,14 +435,27 @@ export function generateReport(
     L3: evaluateCriteria(results, "L3"),
   };
 
-  // Overall result: highest conformant level
+  // Overall result: hierarchical — L3 requires L2 requires L1.
+  // A level can only be CONFORMANT if all lower levels are also CONFORMANT.
+  // If L2 is PARTIAL, overall max = "L3 PARTIAL" even if L3 vectors are all CONFORMANT.
   let overallResult = "NON-CONFORMANT";
-  if (criteria.L3.result === "CONFORMANT") overallResult = "L3 CONFORMANT";
-  else if (criteria.L3.result === "PARTIAL") overallResult = "L3 PARTIAL";
-  else if (criteria.L2.result === "CONFORMANT") overallResult = "L2 CONFORMANT";
-  else if (criteria.L2.result === "PARTIAL") overallResult = "L2 PARTIAL";
-  else if (criteria.L1.result === "CONFORMANT") overallResult = "L1 CONFORMANT";
-  else if (criteria.L1.result === "PARTIAL") overallResult = "L1 PARTIAL";
+  const l1 = criteria.L1.result;
+  const l2 = criteria.L2.result;
+  const l3 = criteria.L3.result;
+
+  if (l1 === "CONFORMANT") {
+    overallResult = "L1 CONFORMANT";
+    if (l2 === "CONFORMANT") {
+      overallResult = "L2 CONFORMANT";
+      if (l3 === "CONFORMANT") overallResult = "L3 CONFORMANT";
+      else if (l3 === "PARTIAL") overallResult = "L3 PARTIAL";
+    } else if (l2 === "PARTIAL") {
+      overallResult = "L2 PARTIAL";
+      if (l3 === "CONFORMANT" || l3 === "PARTIAL") overallResult = "L3 PARTIAL";
+    }
+  } else if (l1 === "PARTIAL") {
+    overallResult = "L1 PARTIAL";
+  }
 
   return {
     harness: "@clawkernel/ckp-test",
