@@ -241,10 +241,11 @@ export async function runVector(
         };
       }
     }
-    // No manifestData and no request — pass (backward compat for scenario vectors)
+    // No manifestData and no request — skip as scenario/manual vector
     return {
       vector,
-      status: "pass",
+      status: "skip",
+      skipReason: "Scenario-based vector: requires orchestrated test (no inline validation possible)",
       durationMs: Date.now() - start,
     };
   }
