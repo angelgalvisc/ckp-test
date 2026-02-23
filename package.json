@@ -1,0 +1,48 @@
+{
+  "name": "@clawkernel/ckp-test",
+  "version": "0.2.0",
+  "description": "Conformance test harness for the Claw Kernel Protocol (CKP)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "ckp-test": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "node --test dist/**/*.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "clawkernel",
+    "ckp",
+    "conformance",
+    "test-harness",
+    "ai-agents",
+    "json-rpc"
+  ],
+  "author": "Angel Galvis Caballero <a@datastrat.co>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/angelgalvisc/ckp-test.git"
+  },
+  "dependencies": {
+    "ajv": "^8.17.0",
+    "ajv-formats": "^3.0.1",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
