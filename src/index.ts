@@ -20,4 +20,5 @@ export {
   type StdioTransport,
 } from "./runner.js";
 export { TEST_VECTORS } from "./vectors.js";
+export { TEST_VECTORS_A2A } from "./vectors.a2a.js";
 export { CONFORMANCE_REQUIREMENTS, type ConformanceLevel } from "./schemas.js";

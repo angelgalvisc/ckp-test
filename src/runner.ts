@@ -15,7 +15,7 @@ export type VectorStatus = "pass" | "fail" | "skip" | "error";
 
 export interface TestVector {
   id: string;
-  level: "L1" | "L2" | "L3";
+  level: "L1" | "L2" | "L3" | "A2A";
   title: string;
   description: string;
   /** JSON-RPC request to send (or null for manifest-only vectors). */
