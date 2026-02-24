@@ -58,6 +58,13 @@ node dist/cli.js vectors
 - **L2 Standard** (10): + Channel, Tool, Sandbox, Policy
 - **L3 Full** (8): + Skill, Memory, Swarm
 
+## Interoperability Scope
+
+- This harness validates CKP core conformance (L1/L2/L3) against the 31 CKP vectors.
+- CKP-A2A interoperability vectors are defined by the profile in the CKP spec repo:  
+  [`spec/compatibility/ckp-a2a-profile.md`](https://github.com/angelgalvisc/clawkernel/blob/main/spec/compatibility/ckp-a2a-profile.md).
+- A2A profile vectors are additive and MUST NOT regress MCP-compatible CKP tool behavior.
+
 ## License
 
 Apache 2.0
