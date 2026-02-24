@@ -2,18 +2,13 @@
 
 /**
  * ckp-test CLI — CKP Conformance Test Harness
- *
- * Usage:
- *   ckp-test validate <claw.yaml>            Validate manifest, detect conformance level
- *   ckp-test run --target <command>           Run all test vectors against a target
- *   ckp-test run --manifest-only <claw.yaml>  Run manifest-only vectors (no target needed)
- *   ckp-test vectors                          List all test vectors
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
+
 import { validateManifest } from "./validator.js";
 import {
   runVector,
@@ -21,8 +16,19 @@ import {
   formatReport,
   createStdioTransport,
   type SkipPolicy,
+  type TestVector,
+  type VectorResult,
 } from "./runner.js";
 import { TEST_VECTORS } from "./vectors.js";
+import { TEST_VECTORS_A2A } from "./vectors.a2a.js";
+
+interface RunOptions {
+  target?: string;
+  manifestPath?: string;
+  skipFile?: string;
+  output?: string;
+  level?: string;
+}
 
 async function bootstrapSession(transport: ReturnType<typeof createStdioTransport>): Promise<boolean> {
   const bootstrapInitialize = {
@@ -61,16 +67,11 @@ async function bootstrapSession(transport: ReturnType<typeof createStdioTranspor
   }
 }
 
-// ── YAML parser (simple, no dependency for manifest parsing) ───────────────
-
 function parseYaml(content: string): Record<string, unknown> {
-  // Use the yaml package if available, otherwise try JSON
   try {
-    // Dynamic import for yaml
     const yaml = require("yaml");
     return yaml.parse(content) as Record<string, unknown>;
   } catch {
-    // Fallback: try JSON
     try {
       return JSON.parse(content) as Record<string, unknown>;
     } catch {
@@ -79,7 +80,27 @@ function parseYaml(content: string): Record<string, unknown> {
   }
 }
 
-// ── Commands ───────────────────────────────────────────────────────────────
+function parseRunOptions(args: string[]): RunOptions {
+  const options: RunOptions = {};
+
+  for (let i = 1; i < args.length; i++) {
+    if (args[i] === "--target" && args[i + 1]) {
+      options.target = args[++i];
+    } else if (args[i] === "--manifest" && args[i + 1]) {
+      options.manifestPath = args[++i];
+    } else if ((args[i] === "--skip") && args[i + 1]) {
+      options.skipFile = args[++i];
+    } else if (args[i] === "--output" && args[i + 1]) {
+      options.output = args[++i];
+    } else if (args[i] === "--level" && args[i + 1]) {
+      options.level = args[++i];
+    } else if (args[i] === "--manifest-only" && args[i + 1]) {
+      options.manifestPath = args[++i];
+    }
+  }
+
+  return options;
+}
 
 async function cmdValidate(manifestPath: string): Promise<void> {
   const content = fs.readFileSync(manifestPath, "utf-8");
@@ -90,7 +111,7 @@ async function cmdValidate(manifestPath: string): Promise<void> {
   console.log("CKP Manifest Validation");
   console.log("=======================");
   console.log(`File: ${manifestPath}`);
-  console.log(`Valid: ${result.valid ? "\u2713 YES" : "\u2717 NO"}`);
+  console.log(`Valid: ${result.valid ? "✓ YES" : "✗ NO"}`);
   console.log(`Conformance Level: ${result.conformanceLevel ?? "N/A"}`);
   console.log(`Primitives: ${result.primitivesSeen.join(", ")}`);
 
@@ -98,7 +119,7 @@ async function cmdValidate(manifestPath: string): Promise<void> {
     console.log("");
     console.log("Errors:");
     for (const err of result.errors) {
-      console.log(`  \u2717 [${err.path}] ${err.message}`);
+      console.log(`  ✗ [${err.path}] ${err.message}`);
     }
   }
 
@@ -114,37 +135,89 @@ async function cmdValidate(manifestPath: string): Promise<void> {
   process.exit(result.valid ? 0 : 1);
 }
 
-async function cmdRun(options: {
-  target?: string;
-  manifestPath?: string;
-  skipFile?: string;
-  output?: string;
-  level?: string;
-}): Promise<void> {
-  // Load skip policy
+function writeA2AReport(output: string, target: string, results: VectorResult[]): void {
+  const pass = results.filter((r) => r.status === "pass").length;
+  const fail = results.filter((r) => r.status === "fail").length;
+  const skip = results.filter((r) => r.status === "skip").length;
+  const error = results.filter((r) => r.status === "error").length;
+  const overall = fail === 0 && error === 0
+    ? (skip === 0 ? "A2A-COMPATIBLE" : "A2A-PARTIAL")
+    : "A2A-NON-COMPATIBLE";
+
+  const payload = {
+    suite: "CKP-A2A",
+    target,
+    timestamp: new Date().toISOString(),
+    summary: { pass, fail, skip, error, overall },
+    results,
+  };
+
+  const ext = path.extname(output);
+  if (ext === ".json") {
+    fs.writeFileSync(output, JSON.stringify(payload, null, 2));
+    return;
+  }
+
+  const lines: string[] = [
+    "# CKP-A2A Compatibility Report",
+    "",
+    `Target: ${payload.target}`,
+    `Date: ${payload.timestamp}`,
+    "",
+    `PASS: ${pass}`,
+    `FAIL: ${fail}`,
+    `SKIP: ${skip}`,
+    `ERROR: ${error}`,
+    `Overall: ${overall}`,
+    "",
+    "## Detailed Results",
+    "",
+  ];
+
+  for (const r of results) {
+    const suffix = r.error ? ` — ${r.error}` : "";
+    lines.push(`- [${r.status.toUpperCase()}] ${r.vector.id} ${r.vector.title}${suffix}`);
+  }
+
+  lines.push("");
+  fs.writeFileSync(output, lines.join("\n"));
+}
+
+async function cmdRun(options: RunOptions): Promise<void> {
   const skipPolicy: SkipPolicy = { skippedVectors: {} };
   if (options.skipFile) {
     const skipContent = fs.readFileSync(options.skipFile, "utf-8");
-    const parsed = JSON.parse(skipContent) as Record<string, string>;
-    skipPolicy.skippedVectors = parsed;
+    skipPolicy.skippedVectors = JSON.parse(skipContent) as Record<string, string>;
   }
 
-  // Filter vectors by level if specified
-  let vectors = TEST_VECTORS;
+  let vectors: TestVector[] = TEST_VECTORS;
+  let runningA2A = false;
+
   if (options.level) {
-    const levelMap: Record<string, string> = { "1": "L1", "2": "L2", "3": "L3" };
-    const lvl = levelMap[options.level] ?? options.level.toUpperCase();
-    vectors = vectors.filter(v => v.level === lvl);
+    const levelMap: Record<string, string> = {
+      "1": "L1",
+      "2": "L2",
+      "3": "L3",
+      "A2A": "A2A",
+    };
+
+    const normalized = options.level.toUpperCase();
+    const lvl = levelMap[normalized] ?? normalized;
+
+    if (lvl === "A2A") {
+      vectors = TEST_VECTORS_A2A;
+      runningA2A = true;
+    } else {
+      vectors = TEST_VECTORS.filter(v => v.level === lvl);
+    }
   }
 
-  // Create transport if target specified
-  let transport = null;
+  let transport: ReturnType<typeof createStdioTransport> | null = null;
   if (options.target) {
     const parts = options.target.split(" ");
     transport = createStdioTransport(parts[0]!, parts.slice(1));
   }
 
-  // Validate manifest if provided
   let manifestValid = true;
   let detectedLevel: string | null = null;
   if (options.manifestPath) {
@@ -155,31 +228,35 @@ async function cmdRun(options: {
     detectedLevel = validation.conformanceLevel;
   }
 
-  // Run vectors
   console.log("");
-  console.log("CKP Conformance Test Runner v0.2.0");
+  console.log(runningA2A ? "CKP-A2A Compatibility Runner" : "CKP Conformance Test Runner v0.2.0");
   console.log("===================================");
   if (options.target) console.log(`Target: ${options.target}`);
   if (options.manifestPath) console.log(`Manifest: ${options.manifestPath}`);
   console.log(`Vectors: ${vectors.length}`);
   console.log("");
 
-  const results = [];
+  const results: VectorResult[] = [];
   let sessionInitialized = false;
+
   for (const vector of vectors) {
     const method = (vector.request && typeof vector.request.method === "string")
       ? vector.request.method
       : null;
 
-    // Ensure session bootstrap for vectors that require an initialized runtime.
     if (transport && method && method !== "claw.initialize" && !sessionInitialized) {
       sessionInitialized = await bootstrapSession(transport);
     }
 
     const result = await runVector(vector, transport, skipPolicy);
-    const icon = result.status === "pass" ? "✓" :
-                 result.status === "fail" ? "✗" :
-                 result.status === "skip" ? "—" : "!";
+    const icon = result.status === "pass"
+      ? "✓"
+      : result.status === "fail"
+        ? "✗"
+        : result.status === "skip"
+          ? "—"
+          : "!";
+
     console.log(`  ${icon} ${vector.id}  ${vector.title}  (${result.durationMs}ms)`);
     if (result.status === "fail" && result.error) {
       console.log(`    └─ ${result.error}`);
@@ -198,7 +275,34 @@ async function cmdRun(options: {
     results.push(result);
   }
 
-  // Generate report
+  if (runningA2A) {
+    const pass = results.filter((r) => r.status === "pass").length;
+    const fail = results.filter((r) => r.status === "fail").length;
+    const skip = results.filter((r) => r.status === "skip").length;
+    const error = results.filter((r) => r.status === "error").length;
+    const overall = fail === 0 && error === 0
+      ? (skip === 0 ? "A2A-COMPATIBLE" : "A2A-PARTIAL")
+      : "A2A-NON-COMPATIBLE";
+
+    console.log("");
+    console.log("A2A Compatibility Results:");
+    console.log(`  PASS: ${pass}`);
+    console.log(`  FAIL: ${fail}`);
+    console.log(`  SKIP: ${skip}`);
+    console.log(`  ERROR: ${error}`);
+    console.log(`Overall: ${overall}`);
+    console.log("");
+
+    if (options.output) {
+      writeA2AReport(options.output, options.target ?? "unknown", results);
+      console.log(`Report written to: ${options.output}`);
+    }
+
+    if (transport) transport.close();
+    process.exit(fail === 0 && error === 0 ? 0 : 1);
+    return;
+  }
+
   const report = generateReport(
     options.target ?? options.manifestPath ?? "unknown",
     manifestValid,
@@ -208,14 +312,13 @@ async function cmdRun(options: {
 
   console.log("");
   console.log("Results:");
-  console.log(`  L1: ${report.criteria.L1.passed}/${report.criteria.L1.totalVectors} pass \u2014 ${report.criteria.L1.result}`);
-  console.log(`  L2: ${report.criteria.L2.passed}/${report.criteria.L2.totalVectors} pass \u2014 ${report.criteria.L2.result}`);
-  console.log(`  L3: ${report.criteria.L3.passed}/${report.criteria.L3.totalVectors} pass \u2014 ${report.criteria.L3.result}`);
+  console.log(`  L1: ${report.criteria.L1.passed}/${report.criteria.L1.totalVectors} pass — ${report.criteria.L1.result}`);
+  console.log(`  L2: ${report.criteria.L2.passed}/${report.criteria.L2.totalVectors} pass — ${report.criteria.L2.result}`);
+  console.log(`  L3: ${report.criteria.L3.passed}/${report.criteria.L3.totalVectors} pass — ${report.criteria.L3.result}`);
   console.log("");
   console.log(`Overall: ${report.overallResult}`);
   console.log("");
 
-  // Write report file
   if (options.output) {
     const ext = path.extname(options.output);
     if (ext === ".json") {
@@ -226,32 +329,28 @@ async function cmdRun(options: {
     console.log(`Report written to: ${options.output}`);
   }
 
-  // Clean up
   if (transport) transport.close();
 
-  // Exit code: 0 if result is CONFORMANT or PARTIAL for the requested scope.
-  // --level N  → check that specific level's result
-  // no --level → check overallResult
   let exitCode = 1;
   if (options.level) {
-    const levelKey = `L${options.level}` as keyof typeof report.criteria;
+    const levelMap: Record<string, string> = { "1": "L1", "2": "L2", "3": "L3" };
+    const lvl = levelMap[options.level] ?? `L${options.level}`;
+    const levelKey = lvl as keyof typeof report.criteria;
     const levelResult = report.criteria[levelKey]?.result;
     if (levelResult === "CONFORMANT" || levelResult === "PARTIAL") {
       exitCode = 0;
     }
-  } else {
-    // Full suite: exit 0 if overall is anything other than NON-CONFORMANT
-    if (report.overallResult !== "NON-CONFORMANT") {
-      exitCode = 0;
-    }
+  } else if (report.overallResult !== "NON-CONFORMANT") {
+    exitCode = 0;
   }
+
   process.exit(exitCode);
 }
 
 function cmdVectors(): void {
   console.log("");
-  console.log("CKP v0.2.0 Test Vectors (31 total)");
-  console.log("====================================");
+  console.log("CKP v0.2.0 Test Vectors");
+  console.log("=======================");
   console.log("");
 
   for (const level of ["L1", "L2", "L3"] as const) {
@@ -263,9 +362,14 @@ function cmdVectors(): void {
     }
     console.log("");
   }
-}
 
-// ── CLI Entry Point ────────────────────────────────────────────────────────
+  console.log(`A2A Compatibility (${TEST_VECTORS_A2A.length} vectors):`);
+  for (const v of TEST_VECTORS_A2A) {
+    const type = v.expected.type === "error" ? "must-fail" : "must-pass";
+    console.log(`  ${v.id}  ${v.title}  [${type}]`);
+  }
+  console.log("");
+}
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -279,27 +383,25 @@ Usage:
     Validate a manifest and detect conformance level.
 
   ckp-test run [options]
-    Run conformance test vectors.
+    Run core CKP conformance vectors (L1/L2/L3).
 
     Options:
       --target <command>      Target agent command (stdio transport)
       --manifest <claw.yaml>  Manifest file to validate
       --skip <skips.json>     Skip policy file (vector_id → reason)
       --output <file>         Write report (.md or .json)
-      --level <1|2|3>         Run only vectors for specific level
+      --level <1|2|3|A2A>     Run vectors for specific level or A2A profile
+
+  ckp-test a2a [options]
+    Run CKP-A2A compatibility vectors.
+
+    Options:
+      --target <command>      Target agent command (stdio transport)
+      --skip <skips.json>     Skip policy file (vector_id → reason)
+      --output <file>         Write compatibility report (.md or .json)
 
   ckp-test vectors
-    List all test vectors.
-
-Conformance Criteria:
-  CONFORMANT:     All vectors pass, 0 skips
-  PARTIAL:        All vectors pass or skip, 0 failures (skips present)
-  NON-CONFORMANT: Any vector fails
-
-Skip Policy:
-  Provide a JSON file mapping vector IDs to skip reasons:
-  { "TV-L3-01": "Swarm not implemented" }
-  Skipped vectors → PARTIAL, never CONFORMANT.
+    List all available vectors.
 `);
   process.exit(0);
 }
@@ -312,30 +414,11 @@ if (command === "validate") {
   }
   cmdValidate(manifestPath);
 } else if (command === "run") {
-  const options: {
-    target?: string;
-    manifestPath?: string;
-    skipFile?: string;
-    output?: string;
-    level?: string;
-  } = {};
-
-  for (let i = 1; i < args.length; i++) {
-    if (args[i] === "--target" && args[i + 1]) {
-      options.target = args[++i];
-    } else if (args[i] === "--manifest" && args[i + 1]) {
-      options.manifestPath = args[++i];
-    } else if ((args[i] === "--skip") && args[i + 1]) {
-      options.skipFile = args[++i];
-    } else if (args[i] === "--output" && args[i + 1]) {
-      options.output = args[++i];
-    } else if (args[i] === "--level" && args[i + 1]) {
-      options.level = args[++i];
-    } else if (args[i] === "--manifest-only" && args[i + 1]) {
-      options.manifestPath = args[++i];
-    }
-  }
-
+  const options = parseRunOptions(args);
+  cmdRun(options);
+} else if (command === "a2a") {
+  const options = parseRunOptions(args);
+  options.level = "A2A";
   cmdRun(options);
 } else if (command === "vectors") {
   cmdVectors();

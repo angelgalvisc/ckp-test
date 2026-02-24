@@ -34,6 +34,12 @@ node dist/cli.js run --manifest claw.yaml --level 1
 node dist/cli.js run --target "./my-agent" --skip skips.json --output report.json
 ```
 
+### Run CKP-A2A compatibility vectors
+
+```bash
+node dist/cli.js a2a --target "./my-agent" --output a2a-report.md
+```
+
 ### List vectors
 
 ```bash
@@ -61,7 +67,7 @@ node dist/cli.js vectors
 ## Interoperability Scope
 
 - This harness validates CKP core conformance (L1/L2/L3) against the 31 CKP vectors.
-- CKP-A2A interoperability vectors are defined by the profile in the CKP spec repo:  
+- CKP-A2A interoperability vectors are runnable via `ckp-test a2a` (8 vectors) and aligned with:
   [`spec/compatibility/ckp-a2a-profile.md`](https://github.com/angelgalvisc/clawkernel/blob/main/spec/compatibility/ckp-a2a-profile.md).
 - A2A profile vectors are additive and MUST NOT regress MCP-compatible CKP tool behavior.
 
