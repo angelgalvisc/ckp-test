@@ -315,9 +315,14 @@ export const TEST_VECTORS: TestVector[] = [
         channels: [
           {
             inline: {
-              type: "cli",
-              transport: "stdio",
-              auth: { secret_ref: "CLI_TOKEN" },
+              type: "cron",
+              transport: "polling",
+              auth: { secret_ref: "CRON_TOKEN" },
+              trigger: {
+                schedule: "0 */6 * * *",
+                max_parallel: 2,
+                overlap_policy: "queue",
+              },
             },
           },
         ],
