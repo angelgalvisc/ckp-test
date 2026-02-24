@@ -175,6 +175,11 @@ function validateInlinePrimitives(
     if (arr && Array.isArray(arr)) {
       for (let i = 0; i < arr.length; i++) {
         validateSingleInline(arr[i], kind, `spec.${key}[${i}]`, errors);
+
+        // Channel-specific trigger checks for event-driven channel types.
+        if (kind === "Channel") {
+          validateEventDrivenChannelTrigger(arr[i], `spec.${key}[${i}]`, errors);
+        }
       }
     }
   }
@@ -184,6 +189,73 @@ function validateInlinePrimitives(
   for (const [key, kind] of Object.entries(singlePrimitives)) {
     if (spec[key] && typeof spec[key] === "object") {
       validateSingleInline(spec[key], kind, `spec.${key}`, errors);
+    }
+  }
+}
+
+function validateEventDrivenChannelTrigger(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): void {
+  if (typeof value !== "object" || value === null) return;
+
+  const obj = value as Record<string, unknown>;
+  const channel = (obj.inline ?? obj.spec ?? obj) as Record<string, unknown>;
+  if (typeof channel !== "object" || channel === null) return;
+
+  const type = channel.type;
+  if (typeof type !== "string") return;
+
+  const eventDrivenType = type === "cron" || type === "queue" || type === "imap" || type === "db-trigger";
+  if (!eventDrivenType) return;
+
+  const trigger = channel.trigger;
+  if (typeof trigger !== "object" || trigger === null) {
+    errors.push({
+      path: path + ".trigger",
+      message: "Channel type \"" + type + "\" should define a trigger block",
+      severity: "error",
+    });
+    return;
+  }
+
+  const t = trigger as Record<string, unknown>;
+  const requiredByType: Record<string, string> = {
+    cron: "schedule",
+    queue: "queue_name",
+    imap: "mailbox",
+    "db-trigger": "table",
+  };
+
+  const requiredField = requiredByType[type];
+  if (requiredField && !(requiredField in t)) {
+    errors.push({
+      path: path + ".trigger." + requiredField,
+      message: "Channel type \"" + type + "\" requires trigger." + requiredField,
+      severity: "error",
+    });
+  }
+
+  if ("max_parallel" in t) {
+    const mp = t.max_parallel;
+    if (typeof mp !== "number" || !Number.isInteger(mp) || mp < 1) {
+      errors.push({
+        path: path + ".trigger.max_parallel",
+        message: "trigger.max_parallel must be an integer >= 1",
+        severity: "error",
+      });
+    }
+  }
+
+  if ("overlap_policy" in t) {
+    const op = t.overlap_policy;
+    if (op !== "skip" && op !== "queue" && op !== "allow") {
+      errors.push({
+        path: path + ".trigger.overlap_policy",
+        message: 'trigger.overlap_policy must be one of: "skip", "queue", "allow"',
+        severity: "error",
+      });
     }
   }
 }
