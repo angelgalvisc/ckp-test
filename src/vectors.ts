@@ -540,7 +540,7 @@ export const TEST_VECTORS: TestVector[] = [
     id: "TV-L3-01",
     level: "L3",
     title: "Valid Level 3 Manifest",
-    description: "Manifest with all 9 primitives",
+    description: "Manifest with all 9 core primitives (Telemetry optional)",
     request: null,
     manifestData: {
       claw: "0.2.0",
