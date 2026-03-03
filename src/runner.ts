@@ -24,7 +24,7 @@ export interface TestVector {
   manifestData?: Record<string, unknown>;
   /** Raw string to send as-is (for parse error testing). */
   rawRequest?: string;
-  /** Scenario-based vector that requires multi-step orchestration (official SKIP). */
+  /** Scenario-based vector requiring custom orchestration (optional harness skip). */
   scenario?: boolean;
   /** Expected behavior. */
   expected: {
@@ -220,12 +220,12 @@ export async function runVector(
     };
   }
 
-  // Scenario-based vectors: official SKIP (requires multi-step orchestration)
+  // Scenario-based vectors: optional skip when orchestration is not modeled in runner
   if (vector.scenario) {
     return {
       vector,
       status: "skip",
-      skipReason: "Scenario-based: requires multi-step orchestration (not supported by current harness)",
+      skipReason: "Scenario-based vector skipped by harness policy",
       durationMs: Date.now() - start,
     };
   }

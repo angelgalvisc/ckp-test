@@ -464,9 +464,20 @@ export const TEST_VECTORS: TestVector[] = [
     id: "TV-L2-07",
     level: "L2",
     title: "Approval Timeout",
-    description: "Approval not received within timeout, expect -32012",
-    request: null,
-    scenario: true, // Official SKIP: requires multi-step orchestration (send tool.call, wait timeout, verify -32012)
+    description: "Approval-required tool call times out without approval, expect -32012",
+    request: {
+      jsonrpc: "2.0",
+      id: "req-005b",
+      method: "claw.tool.call",
+      params: {
+        name: "approval-tool",
+        arguments: {},
+        context: {
+          request_id: "dd0e8400-e29b-41d4-a716-446655440008",
+          identity: "test-agent",
+        },
+      },
+    },
     expected: { type: "error", errorCode: -32012 },
     reference: "Section 5.8, Policy Validation Rules",
   },
