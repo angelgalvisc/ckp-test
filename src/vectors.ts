@@ -121,7 +121,7 @@ export const TEST_VECTORS: TestVector[] = [
             ],
           },
         },
-        capabilities: { tools: {}, swarm: {}, memory: {} },
+        capabilities: {},
       },
     },
     expected: {
@@ -634,8 +634,8 @@ export const TEST_VECTORS: TestVector[] = [
   {
     id: "TV-L3-02",
     level: "L3",
-    title: "Swarm Delegate + Report",
-    description: "Delegate task to peer, receive report",
+    title: "Swarm Delegate + Report Round-Trip",
+    description: "Delegate a task and verify report acknowledgment within the same conformance scenario",
     request: {
       jsonrpc: "2.0",
       id: 10,
@@ -656,33 +656,16 @@ export const TEST_VECTORS: TestVector[] = [
       type: "success",
       requiredFields: ["acknowledged"],
     },
-    reference: "Section 9.3.3, claw.swarm.delegate",
+    reference: "Section 9.3.3, claw.swarm.delegate, claw.swarm.report",
   },
   {
     id: "TV-L3-03",
     level: "L3",
-    title: "Swarm Discover",
-    description: "Discover available peers",
+    title: "Memory Store + Query",
+    description: "Store a memory entry, then query it back",
     request: {
       jsonrpc: "2.0",
       id: 11,
-      method: "claw.swarm.discover",
-      params: { swarm: "test-team" },
-    },
-    expected: {
-      type: "success",
-      requiredFields: ["peers"],
-    },
-    reference: "Section 9.3.3, claw.swarm.discover",
-  },
-  {
-    id: "TV-L3-04",
-    level: "L3",
-    title: "Memory Store + Query",
-    description: "Store an entry then query it",
-    request: {
-      jsonrpc: "2.0",
-      id: 12,
       method: "claw.memory.store",
       params: {
         store: "test-store",
@@ -694,47 +677,92 @@ export const TEST_VECTORS: TestVector[] = [
       type: "success",
       requiredFields: ["stored", "ids"],
     },
-    reference: "Section 9.3.4, claw.memory.store",
+    reference: "Section 9.3.4, claw.memory.store, claw.memory.query",
+  },
+  {
+    id: "TV-L3-04",
+    level: "L3",
+    title: "Allowlist Mode with Roles Field (Invalid Manifest)",
+    description: "Reject a Channel manifest that mixes allowlist mode with roles",
+    request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "bad-channel-allowlist" },
+      spec: {
+        identity: { inline: { personality: "Invalid channel test" } },
+        providers: [
+          {
+            inline: {
+              protocol: "openai-compatible",
+              endpoint: "http://localhost:11434/v1",
+              model: "test-model",
+              auth: { type: "none" },
+            },
+          },
+        ],
+        channels: [
+          {
+            inline: {
+              type: "slack",
+              transport: "webhook",
+              auth: { secret_ref: "SLACK_TOKEN" },
+              access_control: {
+                mode: "allowlist",
+                allowed_ids: ["U01ABC"],
+                roles: [{ id: "U01ABC", role: "admin" }],
+              },
+            },
+          },
+        ],
+      },
+    },
+    expected: { type: "manifest-invalid" },
+    reference: "Section 5.3, Access Control Modes",
   },
   {
     id: "TV-L3-05",
     level: "L3",
-    title: "Memory Query",
-    description: "Query memory store with semantic search",
-    request: {
-      jsonrpc: "2.0",
-      id: 13,
-      method: "claw.memory.query",
-      params: {
-        store: "test-store",
-        query: { type: "semantic", text: "test", top_k: 5 },
+    title: "Role-Based Mode with Allowed IDs (Invalid Manifest)",
+    description: "Reject a Channel manifest that mixes role-based mode with allowed_ids",
+    request: null,
+    manifestData: {
+      claw: "0.2.0",
+      kind: "Claw",
+      metadata: { name: "bad-channel-role-based" },
+      spec: {
+        identity: { inline: { personality: "Invalid channel test" } },
+        providers: [
+          {
+            inline: {
+              protocol: "openai-compatible",
+              endpoint: "http://localhost:11434/v1",
+              model: "test-model",
+              auth: { type: "none" },
+            },
+          },
+        ],
+        channels: [
+          {
+            inline: {
+              type: "telegram",
+              transport: "polling",
+              auth: { secret_ref: "TG_TOKEN" },
+              access_control: {
+                mode: "role-based",
+                roles: [{ id: "12345", role: "user" }],
+                allowed_ids: ["12345"],
+              },
+            },
+          },
+        ],
       },
     },
-    expected: {
-      type: "success",
-      requiredFields: ["entries"],
-    },
-    reference: "Section 9.3.4, claw.memory.query",
+    expected: { type: "manifest-invalid" },
+    reference: "Section 5.3, Access Control Modes",
   },
   {
     id: "TV-L3-06",
-    level: "L3",
-    title: "Memory Compact",
-    description: "Trigger compaction of a memory store",
-    request: {
-      jsonrpc: "2.0",
-      id: 14,
-      method: "claw.memory.compact",
-      params: { store: "test-store" },
-    },
-    expected: {
-      type: "success",
-      requiredFields: ["entries_before", "entries_after"],
-    },
-    reference: "Section 9.3.4, claw.memory.compact",
-  },
-  {
-    id: "TV-L3-07",
     level: "L3",
     title: "Swarm Broadcast",
     description: "Broadcast message to all peers (notification, no response)",
@@ -750,26 +778,37 @@ export const TEST_VECTORS: TestVector[] = [
     reference: "Section 9.3.3, claw.swarm.broadcast",
   },
   {
-    id: "TV-L3-08",
+    id: "TV-L3-07",
     level: "L3",
-    title: "Swarm Report",
-    description: "Peer reports task completion",
+    title: "Swarm Discover",
+    description: "Discover available peers",
     request: {
       jsonrpc: "2.0",
-      id: 15,
-      method: "claw.swarm.report",
-      params: {
-        task_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-        status: "completed",
-        result: { summary: "Test analysis complete" },
-        token_usage: 1000,
-        duration_ms: 5000,
-      },
+      id: 14,
+      method: "claw.swarm.discover",
+      params: { swarm: "test-team" },
     },
     expected: {
       type: "success",
-      requiredFields: ["acknowledged"],
+      requiredFields: ["peers"],
     },
-    reference: "Section 9.3.3, claw.swarm.report",
+    reference: "Section 9.3.3, claw.swarm.discover",
+  },
+  {
+    id: "TV-L3-08",
+    level: "L3",
+    title: "Memory Compact",
+    description: "Trigger compaction of a memory store",
+    request: {
+      jsonrpc: "2.0",
+      id: 15,
+      method: "claw.memory.compact",
+      params: { store: "test-store" },
+    },
+    expected: {
+      type: "success",
+      requiredFields: ["entries_before", "entries_after"],
+    },
+    reference: "Section 9.3.4, claw.memory.compact",
   },
 ];

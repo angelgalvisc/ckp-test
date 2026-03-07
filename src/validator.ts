@@ -179,6 +179,7 @@ function validateInlinePrimitives(
         // Channel-specific trigger checks for event-driven channel types.
         if (kind === "Channel") {
           validateEventDrivenChannelTrigger(arr[i], `spec.${key}[${i}]`, errors);
+          validateChannelAccessControl(arr[i], `spec.${key}[${i}]`, errors);
         }
       }
     }
@@ -190,6 +191,38 @@ function validateInlinePrimitives(
     if (spec[key] && typeof spec[key] === "object") {
       validateSingleInline(spec[key], kind, `spec.${key}`, errors);
     }
+  }
+}
+
+function validateChannelAccessControl(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): void {
+  if (typeof value !== "object" || value === null) return;
+
+  const obj = value as Record<string, unknown>;
+  const channel = (obj.inline ?? obj.spec ?? obj) as Record<string, unknown>;
+  if (typeof channel !== "object" || channel === null) return;
+
+  const access = channel.access_control;
+  if (typeof access !== "object" || access === null) return;
+
+  const cfg = access as Record<string, unknown>;
+  const mode = cfg.mode;
+  if (mode === "allowlist" && "roles" in cfg) {
+    errors.push({
+      path: path + ".access_control.roles",
+      message: 'access_control.roles MUST NOT be present when mode is "allowlist"',
+      severity: "error",
+    });
+  }
+  if (mode === "role-based" && "allowed_ids" in cfg) {
+    errors.push({
+      path: path + ".access_control.allowed_ids",
+      message: 'access_control.allowed_ids MUST NOT be present when mode is "role-based"',
+      severity: "error",
+    });
   }
 }
 

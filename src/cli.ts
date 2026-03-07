@@ -55,7 +55,7 @@ async function bootstrapSession(transport: ReturnType<typeof createStdioTranspor
           ],
         },
       },
-      capabilities: { tools: {}, swarm: {}, memory: {} },
+      capabilities: {},
     },
   };
 

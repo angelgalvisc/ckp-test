@@ -81,3 +81,81 @@ test("validateManifest detects level-3 primitives", () => {
   assert.equal(result.valid, true);
   assert.equal(result.conformanceLevel, "level-3");
 });
+
+test("validateManifest rejects allowlist channels that also define roles", () => {
+  const manifest = {
+    claw: "0.2.0",
+    kind: "Claw",
+    metadata: { name: "bad-allowlist-channel" },
+    spec: {
+      identity: { inline: { personality: "Invalid channel test" } },
+      providers: [
+        {
+          inline: {
+            protocol: "openai-compatible",
+            endpoint: "http://localhost:11434/v1",
+            model: "test-model",
+            auth: { type: "none" },
+          },
+        },
+      ],
+      channels: [
+        {
+          inline: {
+            type: "slack",
+            transport: "webhook",
+            auth: { secret_ref: "SLACK_TOKEN" },
+            access_control: {
+              mode: "allowlist",
+              allowed_ids: ["U01ABC"],
+              roles: [{ id: "U01ABC", role: "admin" }],
+            },
+          },
+        },
+      ],
+    },
+  };
+
+  const result = validateManifest(manifest);
+  assert.equal(result.valid, false);
+  assert.match(result.errors[0]?.message ?? "", /MUST NOT be present/);
+});
+
+test("validateManifest rejects role-based channels that also define allowed_ids", () => {
+  const manifest = {
+    claw: "0.2.0",
+    kind: "Claw",
+    metadata: { name: "bad-role-channel" },
+    spec: {
+      identity: { inline: { personality: "Invalid channel test" } },
+      providers: [
+        {
+          inline: {
+            protocol: "openai-compatible",
+            endpoint: "http://localhost:11434/v1",
+            model: "test-model",
+            auth: { type: "none" },
+          },
+        },
+      ],
+      channels: [
+        {
+          inline: {
+            type: "telegram",
+            transport: "polling",
+            auth: { secret_ref: "TG_TOKEN" },
+            access_control: {
+              mode: "role-based",
+              roles: [{ id: "12345", role: "user" }],
+              allowed_ids: ["12345"],
+            },
+          },
+        },
+      ],
+    },
+  };
+
+  const result = validateManifest(manifest);
+  assert.equal(result.valid, false);
+  assert.match(result.errors[0]?.message ?? "", /MUST NOT be present/);
+});
