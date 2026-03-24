@@ -1,20 +1,21 @@
-// Snapshot of clawkernel/schema/0.2.0/ — sync on CKP version bump
+// Embedded snapshots of clawkernel/schema/0.2.0 and 0.3.0 — sync on CKP version bump
 
 /**
- * Embedded JSON Schemas for CKP v0.2.0 validation.
- * These are copies of the schemas from clawkernel/schema/0.2.0/.
+ * Embedded JSON Schemas for CKP v0.2.0 and v0.3.0 validation.
+ * These are copies of the root validation concepts from clawkernel/schema/.
  * When validating, the harness uses these embedded schemas so it works standalone.
  *
  * Usage with AJV:
- *   1. ajv.addSchema(DEFINITIONS_SCHEMA)
- *   2. const validate = ajv.compile(CLAW_MANIFEST_SCHEMA)
+ *   1. const { definitions, manifest } = getEmbeddedSchemas(version)
+ *   2. ajv.addSchema(definitions)
+ *   3. const validate = ajv.compile(manifest)
  */
 
 // ── Definitions Schema ─────────────────────────────────────────────────────
 
-export const DEFINITIONS_SCHEMA = {
+export const DEFINITIONS_SCHEMA_V020 = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "definitions.schema.json",
+  $id: "definitions-0.2.0.schema.json",
   title: "CKP Common Definitions",
   description: "Shared definitions for Claw Kernel Protocol v0.2.0 schemas.",
   $defs: {
@@ -63,20 +64,20 @@ export const DEFINITIONS_SCHEMA = {
 
 // ── Claw Manifest Schema (root) ────────────────────────────────────────────
 
-export const CLAW_MANIFEST_SCHEMA = {
+export const CLAW_MANIFEST_SCHEMA_V020 = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
-  $id: "claw.schema.json",
+  $id: "claw-0.2.0.schema.json",
   title: "CKP Claw Manifest",
   description: "Root manifest schema for Claw Kernel Protocol v0.2.0.",
   type: "object",
   properties: {
-    claw: { $ref: "definitions.schema.json#/$defs/protocolVersion" },
+    claw: { $ref: "definitions-0.2.0.schema.json#/$defs/protocolVersion" },
     kind: { const: "Claw" },
     metadata: {
       type: "object",
       properties: {
-        name: { $ref: "definitions.schema.json#/$defs/kebabName" },
-        version: { $ref: "definitions.schema.json#/$defs/semver" },
+        name: { $ref: "definitions-0.2.0.schema.json#/$defs/kebabName" },
+        version: { $ref: "definitions-0.2.0.schema.json#/$defs/semver" },
         description: { type: "string" },
         labels: {
           type: "object",
@@ -244,6 +245,84 @@ export const CLAW_MANIFEST_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+function deepClone<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function replaceStringLeaves(value: unknown, from: string, to: string): unknown {
+  if (typeof value === "string") return value.replaceAll(from, to);
+  if (Array.isArray(value)) return value.map((item) => replaceStringLeaves(item, from, to));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        replaceStringLeaves(v, from, to),
+      ]),
+    );
+  }
+  return value;
+}
+
+export const DEFINITIONS_SCHEMA_V030 = (() => {
+  const schema = replaceStringLeaves(
+    deepClone(DEFINITIONS_SCHEMA_V020),
+    "0.2.0",
+    "0.3.0",
+  ) as {
+    $id: string;
+    description: string;
+    $defs: { kind: { enum: string[] } };
+  };
+  schema.$id = "definitions-0.3.0.schema.json";
+  if (!schema.$defs.kind.enum.includes("WorldModel")) {
+    const sandboxIndex = schema.$defs.kind.enum.indexOf("Sandbox");
+    schema.$defs.kind.enum.splice(sandboxIndex, 0, "WorldModel");
+  }
+  return schema;
+})();
+
+export const CLAW_MANIFEST_SCHEMA_V030 = (() => {
+  const schema = replaceStringLeaves(
+    deepClone(CLAW_MANIFEST_SCHEMA_V020),
+    "0.2.0",
+    "0.3.0",
+  ) as {
+    $id: string;
+    description: string;
+    properties: { spec: { properties: Record<string, unknown> } };
+  };
+  schema.$id = "claw-0.3.0.schema.json";
+  schema.description = "Root manifest schema for Claw Kernel Protocol v0.3.0.";
+  schema.properties.spec.properties.world_models = {
+    type: "array",
+    items: {
+      oneOf: [
+        { type: "string", minLength: 1 },
+        { type: "object" },
+      ],
+    },
+  };
+  return schema;
+})();
+
+export const SUPPORTED_PROTOCOL_VERSIONS = ["0.2.0", "0.3.0"] as const;
+
+export function getEmbeddedSchemas(version: string): {
+  definitions: Record<string, unknown>;
+  manifest: Record<string, unknown>;
+} {
+  if (version === "0.3.0") {
+    return {
+      definitions: DEFINITIONS_SCHEMA_V030,
+      manifest: CLAW_MANIFEST_SCHEMA_V030,
+    };
+  }
+  return {
+    definitions: DEFINITIONS_SCHEMA_V020,
+    manifest: CLAW_MANIFEST_SCHEMA_V020,
+  };
+}
+
 // ── Per-kind Required Fields (for supplemental inline validation) ───────────
 
 export const REQUIRED_FIELDS_BY_KIND: Record<string, string[]> = {
@@ -253,6 +332,7 @@ export const REQUIRED_FIELDS_BY_KIND: Record<string, string[]> = {
   Tool: [], // conditional: description+input_schema OR mcp_source
   Skill: ["description", "tools_required", "instruction"],
   Memory: ["stores"],
+  WorldModel: ["backend"],
   Sandbox: ["level"],
   Policy: ["rules"],
   Swarm: ["topology", "agents", "coordination", "aggregation"],

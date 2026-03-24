@@ -1,6 +1,6 @@
 {
   "name": "@clawkernel/ckp-test",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Conformance test harness for the Claw Kernel Protocol (CKP)",
   "type": "module",
   "main": "dist/index.js",
@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "node --test dist",
+    "test": "npm run build && node --test dist",
     "lint": "tsc --noEmit"
   },
   "files": [

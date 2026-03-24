@@ -459,7 +459,7 @@ export function generateReport(
 
   return {
     harness: "@clawkernel/ckp-test",
-    version: "0.2.0",
+    version: "0.3.0",
     timestamp: new Date().toISOString(),
     target,
     manifestValid,

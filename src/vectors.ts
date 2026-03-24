@@ -1,5 +1,5 @@
 /**
- * CKP v0.2.0 Built-in Test Vectors
+ * CKP v0.3.0 Built-in Test Vectors
  *
  * 31 vectors: 13 L1 + 10 L2 + 8 L3
  * Extracted from clawkernel-test-vectors.md
@@ -20,7 +20,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Smallest valid claw.yaml with inline Identity + Provider",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "test-minimal" },
       spec: {
@@ -52,7 +52,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Manifest without Identity — must reject",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "test-no-identity" },
       spec: {
@@ -78,7 +78,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Manifest without Providers — must reject",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "test-no-providers" },
       spec: {
@@ -102,8 +102,8 @@ export const TEST_VECTORS: TestVector[] = [
       id: 1,
       method: "claw.initialize",
       params: {
-        protocolVersion: "0.2.0",
-        clientInfo: { name: "ckp-test", version: "0.2.0" },
+        protocolVersion: "0.3.0",
+        clientInfo: { name: "ckp-test", version: "0.3.0" },
         manifest: {
           kind: "Claw",
           metadata: { name: "test-agent" },
@@ -141,7 +141,7 @@ export const TEST_VECTORS: TestVector[] = [
       method: "claw.initialize",
       params: {
         protocolVersion: "99.0.0",
-        clientInfo: { name: "ckp-test", version: "0.2.0" },
+        clientInfo: { name: "ckp-test", version: "0.3.0" },
         manifest: { kind: "Claw", metadata: { name: "test" }, spec: {} },
         capabilities: {},
       },
@@ -218,7 +218,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Identity with empty personality string — must reject",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "test-empty-personality" },
       spec: {
@@ -292,7 +292,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Manifest with Identity + Provider + Channel + Tool + Sandbox + Policy",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "test-l2-manifest" },
       spec: {
@@ -554,7 +554,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Manifest with all 9 core primitives (Telemetry optional)",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "test-l3-manifest" },
       spec: {
@@ -686,7 +686,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Reject a Channel manifest that mixes allowlist mode with roles",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "bad-channel-allowlist" },
       spec: {
@@ -727,7 +727,7 @@ export const TEST_VECTORS: TestVector[] = [
     description: "Reject a Channel manifest that mixes role-based mode with allowed_ids",
     request: null,
     manifestData: {
-      claw: "0.2.0",
+      claw: "0.3.0",
       kind: "Claw",
       metadata: { name: "bad-channel-role-based" },
       spec: {

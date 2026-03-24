@@ -36,8 +36,8 @@ async function bootstrapSession(transport: ReturnType<typeof createStdioTranspor
     id: "ckp-bootstrap",
     method: "claw.initialize",
     params: {
-      protocolVersion: "0.2.0",
-      clientInfo: { name: "ckp-test", version: "0.2.0" },
+      protocolVersion: "0.3.0",
+      clientInfo: { name: "ckp-test", version: "0.3.0" },
       manifest: {
         kind: "Claw",
         metadata: { name: "ckp-bootstrap" },
@@ -229,7 +229,7 @@ async function cmdRun(options: RunOptions): Promise<void> {
   }
 
   console.log("");
-  console.log(runningA2A ? "CKP-A2A Compatibility Runner" : "CKP Conformance Test Runner v0.2.0");
+  console.log(runningA2A ? "CKP-A2A Compatibility Runner" : "CKP Conformance Test Runner v0.3.0");
   console.log("===================================");
   if (options.target) console.log(`Target: ${options.target}`);
   if (options.manifestPath) console.log(`Manifest: ${options.manifestPath}`);
@@ -349,7 +349,7 @@ async function cmdRun(options: RunOptions): Promise<void> {
 
 function cmdVectors(): void {
   console.log("");
-  console.log("CKP v0.2.0 Test Vectors");
+  console.log("CKP v0.3.0 Test Vectors");
   console.log("=======================");
   console.log("");
 
@@ -376,7 +376,7 @@ const command = args[0];
 
 if (!command || command === "--help" || command === "-h") {
   console.log(`
-ckp-test — CKP Conformance Test Harness v0.2.0
+ckp-test — CKP Conformance Test Harness v0.3.0
 
 Usage:
   ckp-test validate <claw.yaml>

@@ -1,16 +1,19 @@
 /**
  * CKP Manifest Validator
  *
- * Validates a claw.yaml manifest against the CKP v0.2.0 specification.
- * Uses AJV with embedded JSON Schemas as the primary validation layer.
+ * Validates a claw.yaml manifest against the CKP v0.2.0 / v0.3.0 specification.
+ * Uses embedded JSON Schemas as the primary validation layer.
  * Returns the detected conformance level and any validation errors.
  */
 
 import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import {
-  DEFINITIONS_SCHEMA,
-  CLAW_MANIFEST_SCHEMA,
+  DEFINITIONS_SCHEMA_V020,
+  DEFINITIONS_SCHEMA_V030,
+  CLAW_MANIFEST_SCHEMA_V020,
+  CLAW_MANIFEST_SCHEMA_V030,
+  SUPPORTED_PROTOCOL_VERSIONS,
   REQUIRED_FIELDS_BY_KIND,
   CONFORMANCE_REQUIREMENTS,
   type ConformanceLevel,
@@ -18,14 +21,15 @@ import {
 
 // ── AJV Setup (Draft 2020-12) ───────────────────────────────────────────────
 
-const ajv = new Ajv2020({ allErrors: true, strict: false });
-addFormats(ajv);
+function createValidator(definitions: object, manifest: object) {
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  ajv.addSchema(definitions);
+  return ajv.compile(manifest);
+}
 
-// Register definitions schema first (referenced by $ref)
-ajv.addSchema(DEFINITIONS_SCHEMA);
-
-// Compile the root manifest schema
-const validateSchema = ajv.compile(CLAW_MANIFEST_SCHEMA);
+const validateSchemaV020 = createValidator(DEFINITIONS_SCHEMA_V020, CLAW_MANIFEST_SCHEMA_V020);
+const validateSchemaV030 = createValidator(DEFINITIONS_SCHEMA_V030, CLAW_MANIFEST_SCHEMA_V030);
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,9 +56,19 @@ export function validateManifest(manifest: Record<string, unknown>): ValidationR
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
   const primitivesSeen: string[] = [];
+  const manifestVersion = typeof manifest.claw === "string" ? manifest.claw : "0.3.0";
+
+  if (typeof manifest.claw === "string" && !(SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(manifest.claw)) {
+    errors.push({
+      path: "claw",
+      message: `Unsupported CKP version: ${manifest.claw}`,
+      severity: "error",
+    });
+  }
 
   // ── Phase 1: AJV schema validation ──────────────────────────────────────
 
+  const validateSchema = manifestVersion === "0.3.0" ? validateSchemaV030 : validateSchemaV020;
   const schemaValid = validateSchema(manifest);
 
   if (!schemaValid && validateSchema.errors) {
@@ -89,6 +103,10 @@ export function validateManifest(manifest: Record<string, unknown>): ValidationR
     }
   }
 
+  if (spec.world_models !== undefined && Array.isArray(spec.world_models)) {
+    primitivesSeen.push("world_models");
+  }
+
   const optionalSinglePrimitives = ["memory", "sandbox", "swarm", "telemetry"];
   for (const key of optionalSinglePrimitives) {
     if (spec[key] !== undefined) {
@@ -99,6 +117,7 @@ export function validateManifest(manifest: Record<string, unknown>): ValidationR
   // Supplemental inline validation for inline primitives
   // (AJV handles structure; we check per-kind required fields for deeply nested inlines)
   validateInlinePrimitives(spec, errors);
+  validateWorldModelReferences(spec, errors);
 
   // ── Phase 3: Determine conformance level ────────────────────────────────
 
@@ -166,10 +185,15 @@ function validateInlinePrimitives(
     validateSingleInline(spec.identity, "Identity", "spec.identity", errors);
   }
 
-  // Validate inline array primitives (Channel, Skill, Policy)
+  // Validate inline array primitives (Channel, Skill, Policy, WorldModel)
   // These supplement AJV — the manifest schema uses { "type": "object" } for inlines,
   // so AJV doesn't check required fields. We use REQUIRED_FIELDS_BY_KIND to fill the gap.
-  const arrayPrimitives: Record<string, string> = { channels: "Channel", skills: "Skill", policies: "Policy" };
+  const arrayPrimitives: Record<string, string> = {
+    channels: "Channel",
+    skills: "Skill",
+    policies: "Policy",
+    world_models: "WorldModel",
+  };
   for (const [key, kind] of Object.entries(arrayPrimitives)) {
     const arr = spec[key];
     if (arr && Array.isArray(arr)) {
@@ -190,6 +214,82 @@ function validateInlinePrimitives(
   for (const [key, kind] of Object.entries(singlePrimitives)) {
     if (spec[key] && typeof spec[key] === "object") {
       validateSingleInline(spec[key], kind, `spec.${key}`, errors);
+    }
+  }
+}
+
+function validateWorldModelReferences(
+  spec: Record<string, unknown>,
+  errors: ValidationError[],
+): void {
+  const declaredWorldModels = new Set<string>();
+
+  if (Array.isArray(spec.world_models)) {
+    for (let i = 0; i < spec.world_models.length; i++) {
+      const item = spec.world_models[i];
+      if (typeof item !== "object" || item === null) continue;
+      const obj = item as Record<string, unknown>;
+      const worldModel = (obj.inline ?? obj.spec ?? obj) as Record<string, unknown>;
+      if (typeof worldModel !== "object" || worldModel === null) continue;
+      if (typeof worldModel.name === "string" && worldModel.name.length > 0) {
+        declaredWorldModels.add(worldModel.name);
+      }
+    }
+  }
+
+  const hasMemory = spec.memory !== undefined;
+  const hasPolicies = Array.isArray(spec.policies) && spec.policies.length > 0;
+
+  if (Array.isArray(spec.skills)) {
+    for (let i = 0; i < spec.skills.length; i++) {
+      const item = spec.skills[i];
+      if (typeof item !== "object" || item === null) continue;
+      const obj = item as Record<string, unknown>;
+      const skill = (obj.inline ?? obj.spec ?? obj) as Record<string, unknown>;
+      if (typeof skill !== "object" || skill === null) continue;
+      if (
+        typeof skill.world_model_ref === "string" &&
+        skill.world_model_ref.length > 0 &&
+        !declaredWorldModels.has(skill.world_model_ref)
+      ) {
+        errors.push({
+          path: `spec.skills[${i}].world_model_ref`,
+          message: `world_model_ref "${skill.world_model_ref}" does not match any declared world model`,
+          severity: "error",
+        });
+      }
+    }
+  }
+
+  if (Array.isArray(spec.world_models)) {
+    for (let i = 0; i < spec.world_models.length; i++) {
+      const item = spec.world_models[i];
+      if (typeof item !== "object" || item === null) continue;
+      const obj = item as Record<string, unknown>;
+      const worldModel = (obj.inline ?? obj.spec ?? obj) as Record<string, unknown>;
+      if (typeof worldModel !== "object" || worldModel === null) continue;
+
+      if (typeof worldModel.memory_ref === "string" && worldModel.memory_ref.length > 0 && !hasMemory) {
+        errors.push({
+          path: `spec.world_models[${i}].memory_ref`,
+          message: "memory_ref requires a declared Memory primitive",
+          severity: "error",
+        });
+      }
+
+      const constraints = worldModel.constraints;
+      if (
+        typeof constraints === "object" &&
+        constraints !== null &&
+        typeof (constraints as Record<string, unknown>).policy_ref === "string" &&
+        !hasPolicies
+      ) {
+        errors.push({
+          path: `spec.world_models[${i}].constraints.policy_ref`,
+          message: "constraints.policy_ref requires at least one declared Policy primitive",
+          severity: "error",
+        });
+      }
     }
   }
 }
